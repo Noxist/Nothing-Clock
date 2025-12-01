@@ -1,0 +1,44 @@
+name: Flutter Android Build
+
+on:
+  # Triggers the workflow on push events for main and master branches
+  push:
+    branches:
+      - main
+      - master
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Use the latest Ubuntu runner
+
+    steps:
+      - name: ⚙️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐦 Set up Flutter SDK
+        # Uses a dedicated action to set up the Flutter environment
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable' # Specify the Flutter channel (stable, beta, or dev)
+
+      - name: 📦 Get dependencies
+        # Fetches all necessary packages defined in pubspec.yaml
+        run: flutter pub get
+
+      - name: 🔨 Build release APK
+        # Creates the production-ready release APK file
+        # The output is located at: build/app/outputs/flutter-apk/app-release.apk
+        run: flutter build apk --release
+
+      - name: ⬆️ Upload APK artifact
+        # Makes the built APK file available for download in the workflow summary
+        uses: actions/upload-artifact@v4
+        with:
+          # Name of the downloadable artifact
+          name: nothing-clock-android-release
+          # Path to the generated release APK file
+          path: build/app/outputs/flutter-apk/app-release.apk
+          # Optional: Keep the artifact for 7 days
+          retention-days: 7
