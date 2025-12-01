@@ -1,69 +1,74 @@
-import 'package:flutter/foundation.dart';
-import 'package:nothing_clock/models/alarm.dart';
-import 'package:nothing_clock/services/alarms_service.dart';
+import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../models/alarm.dart';
+import '../services/alarms_service.dart';
 
-/// A view model that handles business logic for the alarms screen.
-/// This separates the business logic from the UI representation.
-class AlarmsViewModel with ChangeNotifier {
-  /// Service that handles persistence and scheduling of alarms
+class AlarmsViewModel extends ChangeNotifier {
   final AlarmsService _alarmsService = AlarmsService();
-  
-  /// The collection of user-created alarms
   List<Alarm> _alarms = [];
-  
-  /// Public getter for the alarms collection
+  bool _isLoading = true;
+
   List<Alarm> get alarms => _alarms;
+  bool get isLoading => _isLoading;
 
-  /// Sleep time state and days (preset configuration)
-  final DateTime _sleepTime = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 8, 15);
-  final List<String> _sleepDays = ["MON", "TUE", "WED"];
-  bool _isSleepEnabled = false;
+  AlarmsViewModel() {
+    _loadAlarms();
+  }
 
-  /// Getters for sleep time configuration
-  DateTime get sleepTime => _sleepTime;
-  List<String> get sleepDays => _sleepDays;
-  bool get isSleepEnabled => _isSleepEnabled;
-  
-  /// Sets the sleep time enabled state
-  void toggleSleepEnabled() {
-    _isSleepEnabled = !_isSleepEnabled;
+  Future<void> _loadAlarms() async {
+    _isLoading = true;
+    notifyListeners();
+    _alarms = await _alarmsService.getAlarms();
+    _isLoading = false;
     notifyListeners();
   }
 
-  /// Loads alarms from persistent storage
-  Future<void> loadAlarms() async {
-    // Retrieve alarms from the service
-    _alarms = await _alarmsService.loadAlarms();
-    
-    // Notify any listeners (like the UI) that data has changed
+  Future<void> addAlarm(Alarm alarm) async {
+    await _alarmsService.saveAlarm(alarm);
+    _alarms.add(alarm);
+    // Sort alarms by time
+    _alarms.sort((a, b) {
+      final aTime = a.time.hour * 60 + a.time.minute;
+      final bTime = b.time.hour * 60 + b.time.minute;
+      return aTime.compareTo(bTime);
+    });
     notifyListeners();
   }
 
-  /// Adds a new alarm and persists it
-  Future<void> addAlarm(Alarm newAlarm) async {
-    // Save alarm to persistent storage
-    await _alarmsService.saveAlarmData(newAlarm);
-    
-    // Reload alarms list to include the new alarm
-    await loadAlarms();
-  }
-
-  /// Toggles the enabled state of an alarm
-  void toggleAlarmState(Alarm alarm) {
-    // Toggle the enabled state
-    alarm.isEnabled = !alarm.isEnabled;
-    
-    // Schedule or cancel the alarm based on the new state
-    if (alarm.isEnabled) {
-      _alarmsService.scheduleAlarmAt(alarm);
-    } else {
-      _alarmsService.cancelAlarm(alarm);
+  Future<void> updateAlarm(Alarm alarm) async {
+    await _alarmsService.saveAlarm(alarm); // This handles update if ID exists
+    final index = _alarms.indexWhere((a) => a.id == alarm.id);
+    if (index != -1) {
+      _alarms[index] = alarm;
+      notifyListeners();
     }
+  }
+
+  Future<void> deleteAlarm(String id) async {
+    // 1. Cancel the notification/schedule
+    await _alarmsService.cancelAlarm(id);
     
-    // Save the updated state
-    alarm.save();
+    // 2. Remove from local storage
+    await _alarmsService.deleteAlarm(id);
     
-    // Refresh UI
+    // 3. Remove from local list and update UI
+    _alarms.removeWhere((alarm) => alarm.id == id);
     notifyListeners();
   }
-} 
+
+  Future<void> toggleAlarm(String id, bool value) async {
+    final index = _alarms.indexWhere((a) => a.id == id);
+    if (index != -1) {
+      final alarm = _alarms[index];
+      final updatedAlarm = alarm.copyWith(isEnabled: value);
+      
+      if (value) {
+        await _alarmsService.scheduleAlarm(updatedAlarm);
+      } else {
+        await _alarmsService.cancelAlarm(updatedAlarm.id);
+      }
+      
+      await updateAlarm(updatedAlarm);
+    }
+  }
+}
