@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
 import '../../models/alarm.dart';
 import '../../view_models/alarms_view_model.dart';
 
@@ -30,7 +29,7 @@ class AlarmGrid extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 2,
-            childAspectRatio: 0.85, // Taller cards to fit content
+            childAspectRatio: 0.85,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
           ),
@@ -48,11 +47,10 @@ class AlarmGrid extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    // Format time
     final timeString = '${alarm.time.hour.toString().padLeft(2, '0')}:${alarm.time.minute.toString().padLeft(2, '0')}';
 
     return Dismissible(
-      key: Key(alarm.id),
+      key: Key(alarm.id.toString()), // Fixed: Convert int ID to String
       direction: DismissDirection.up,
       onDismissed: (_) => viewModel.deleteAlarm(alarm.id),
       background: Container(
@@ -78,15 +76,16 @@ class AlarmGrid extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  alarm.label.isEmpty ? 'Alarm' : alarm.label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                Expanded(
+                  child: Text(
+                    alarm.label.isEmpty ? 'Alarm' : alarm.label,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                // Delete Button
                 GestureDetector(
                   onTap: () => viewModel.deleteAlarm(alarm.id),
                   child: Icon(
@@ -103,7 +102,7 @@ class AlarmGrid extends StatelessWidget {
             Text(
               timeString,
               style: theme.textTheme.displayMedium?.copyWith(
-                fontSize: 40, // Adjusted for card size
+                fontSize: 40,
                 color: alarm.isEnabled 
                     ? theme.colorScheme.onSurface 
                     : theme.colorScheme.onSurface.withOpacity(0.3),
@@ -116,7 +115,7 @@ class AlarmGrid extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  _formatDays(alarm.days),
+                  _formatDays(alarm.days), // Fixed: logic helper below
                   style: theme.textTheme.bodySmall?.copyWith(
                      color: theme.colorScheme.onSurface.withOpacity(0.5),
                   ),
@@ -135,15 +134,19 @@ class AlarmGrid extends StatelessWidget {
     );
   }
 
-  String _formatDays(List<bool> days) {
-    if (days.every((element) => element == false)) return 'Once';
-    if (days.every((element) => element == true)) return 'Daily';
+  String _formatDays(Map<String, bool> days) {
+    if (days.values.every((e) => e == false)) return 'Once';
+    if (days.values.every((e) => e == true)) return 'Daily';
     
-    // Simple logic to show Mon, Tue etc.
-    const weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    // Sort logic to order M, T, W, etc.
+    final orderedDays = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
     List<String> activeDays = [];
-    for(int i=0; i<days.length; i++) {
-      if(days[i]) activeDays.add(weekDays[i]);
+    
+    for (var day in orderedDays) {
+      if (days[day] == true) {
+        // Map "MON" -> "M", "TUE" -> "T", etc.
+        activeDays.add(day[0]); 
+      }
     }
     return activeDays.join(' ');
   }
