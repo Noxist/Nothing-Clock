@@ -21,33 +21,38 @@ class AlarmsService {
     "SAT": DateTime.saturday,
   };
 
-  // Alias for loadAlarms to match ViewModel
   Future<List<Alarm>> getAlarms() => loadAlarms();
-
-  // Alias for saveAlarmData to match ViewModel
   Future<void> saveAlarm(Alarm alarm) => saveAlarmData(alarm);
-
-  // Alias for scheduleAlarmAt
   Future<void> scheduleAlarm(Alarm alarm) => scheduleAlarmAt(alarm);
+
+  // --- Missing Methods Restored ---
+  Future<bool> canScheduleExactAlarms() async {
+    try {
+      final bool? result = await _channel.invokeMethod("canScheduleExactAlarms");
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint("Error checking exact alarms: $e");
+      return false;
+    }
+  }
+
+  static Future<void> openExactAlarmSettings() async {
+    try {
+      await _channel.invokeMethod("openExactAlarmSettings");
+    } on PlatformException catch (e) {
+      debugPrint("Error opening settings: $e");
+    }
+  }
+  // --------------------------------
 
   Future<void> saveAlarmData(Alarm alarm) async {
     final box = await Hive.openBox<Alarm>('alarms');
-    // If alarm is already in box (it has a key), Hive updates it automatically.
-    // If it's new, we add it.
     if (alarm.isInBox) {
       await alarm.save();
     } else {
-      await box.add(alarm);
+      await box.put(alarm.id, alarm);
     }
-    
-    // Update cache
-    if (_cachedAlarms == null) {
-      await loadAlarms();
-    } else {
-      if (!_cachedAlarms!.contains(alarm)) {
-        _cachedAlarms!.add(alarm);
-      }
-    }
+    _cachedAlarms = box.values.toList();
   }
 
   Future<List<Alarm>> loadAlarms() async {
@@ -56,50 +61,56 @@ class AlarmsService {
     return _cachedAlarms!;
   }
 
-  Future<void> deleteAlarm(String idStr) async {
-    // Convert string ID back to int if necessary, or find by ID field
-    final int id = int.tryParse(idStr) ?? 0;
+  Future<void> deleteAlarm(int id) async {
     final box = await Hive.openBox<Alarm>('alarms');
-    
-    final alarmToDelete = box.values.firstWhere(
-      (a) => a.id == id, 
-      orElse: () => Alarm(time: DateTime.now(), days: {}),
-    );
-
-    if (alarmToDelete.isInBox) {
-      await alarmToDelete.delete();
-    }
-    
-    _cachedAlarms?.removeWhere((a) => a.id == id);
+    await box.delete(id);
+    _cachedAlarms = box.values.toList();
   }
 
   Future<void> cancelAlarm(dynamic idOrAlarm) async {
     if (idOrAlarm is Alarm) {
       await _cancelAlarmInternal(idOrAlarm);
-    } else if (idOrAlarm is String || idOrAlarm is int) {
-      // If passed an ID, try to find it in cache
-      int id = idOrAlarm is String ? int.parse(idOrAlarm) : idOrAlarm;
-      final alarm = _cachedAlarms?.firstWhere((a) => a.id == id, orElse: () => Alarm(time: DateTime.now(), days: {}));
-      if (alarm != null && alarm.isInBox) {
+    } else if (idOrAlarm is int) {
+      // Try to find the alarm to get its days for proper cancellation
+      final box = await Hive.openBox<Alarm>('alarms');
+      final alarm = box.get(idOrAlarm);
+      
+      if (alarm != null) {
         await _cancelAlarmInternal(alarm);
+      } else {
+        // Fallback: just cancel the main ID if alarm object not found
+        await AndroidAlarmManager.cancel(idOrAlarm);
       }
     }
   }
 
   Future<void> _cancelAlarmInternal(Alarm alarm) async {
+    await AndroidAlarmManager.cancel(alarm.id); // Cancel main ID
+    
+    // Cancel specific day IDs
     alarm.days.forEach((dayKey, isActive) async {
-      if(isActive) {
         final targetWeekday = dayStringToWeekday[dayKey];
         if(targetWeekday != null) {
           final int truncatedAlarmId = alarm.id & ((1 << 28) - 1);
           final int id = (((truncatedAlarmId << 3) | (targetWeekday & 0x7)) & 0xFFFFFFFF);
           await AndroidAlarmManager.cancel(id);
         }
-      }
     });
   }
 
   Future<void> scheduleAlarmAt(Alarm alarm) async {
+    // Schedule one-shot if no days selected
+    if (alarm.days.values.every((active) => !active)) {
+       await AndroidAlarmManager.oneShotAt(
+         alarm.time, 
+         alarm.id, 
+         alarmCallback, 
+         exact: true, 
+         wakeup: true
+       );
+       return;
+    }
+
     alarm.days.forEach((dayKey, isActive) async {
       if(isActive) {
         final targetWeekday = dayStringToWeekday[dayKey];
