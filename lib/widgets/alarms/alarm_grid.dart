@@ -1,186 +1,150 @@
 import 'package:flutter/material.dart';
-import 'package:nothing_clock/models/alarm.dart';
-import 'package:nothing_clock/providers/theme_provider.dart';
-import 'package:nothing_clock/widgets/alarms/alarm_form_bottom_sheet.dart';
-import 'package:nothing_clock/widgets/switch_button.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../../models/alarm.dart';
+import '../../view_models/alarms_view_model.dart';
 
-/// Grid widget that displays existing alarms and a button to add a new one.
 class AlarmGrid extends StatelessWidget {
-  /// List of alarms to render in the grid.
-  final List<Alarm> alarms;
-
-  /// The width/height of each grid cell.
-  final double blockSize;
-  
-  /// Callback when an alarm is toggled
-  final Function(Alarm) onToggleAlarm;
-  
-  /// Callback when a new alarm is added
-  final Function(Alarm) onAddAlarm;
-
-  const AlarmGrid({
-    super.key, 
-    required this.alarms, 
-    required this.blockSize,
-    required this.onToggleAlarm,
-    required this.onAddAlarm,
-  });
+  const AlarmGrid({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Using GridView.builder for dynamic items + add button.
-    // This is efficient since it only builds visible items.
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: alarms.length + 1, // +1 for the add button
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10),
-      itemBuilder: (ctx, idx) {
-        // Check if we're building the last item (add button)
-        if (idx == alarms.length) {
-          // Render the add button as the last item.
-          return AddAlarmButton(
-            blockSize: blockSize,
-            onAddAlarm: onAddAlarm,
+    return Consumer<AlarmsViewModel>(
+      builder: (context, viewModel, child) {
+        if (viewModel.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (viewModel.alarms.isEmpty) {
+          return Center(
+            child: Text(
+              'No Alarms',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  ),
+            ),
           );
         }
-        // Render a single alarm block.
-        return AlarmBlock(
-          alarm: alarms[idx], 
-          blockSize: blockSize,
-          onToggle: () => onToggleAlarm(alarms[idx]),
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.85, // Taller cards to fit content
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: viewModel.alarms.length,
+          itemBuilder: (context, index) {
+            final alarm = viewModel.alarms[index];
+            return _buildAlarmCard(context, alarm, viewModel);
+          },
         );
       },
     );
   }
-}
 
-/// Button that opens the bottom sheet to create a new alarm.
-class AddAlarmButton extends StatelessWidget {
-  /// Size of the button block
-  final double blockSize;
-  
-  /// Callback when a new alarm is added
-  final Function(Alarm) onAddAlarm;
-
-  const AddAlarmButton({
-    super.key, 
-    required this.blockSize,
-    required this.onAddAlarm,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
+  Widget _buildAlarmCard(BuildContext context, Alarm alarm, AlarmsViewModel viewModel) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    // Format time
+    final timeString = '${alarm.time.hour.toString().padLeft(2, '0')}:${alarm.time.minute.toString().padLeft(2, '0')}';
 
-    return InkWell(
-      onTap: () {
-        // Show modal bottom sheet for adding a new alarm.
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true, // Allow sheet to expand based on content
-          builder: (_) => AlarmFormBottomSheet(
-            onSave: onAddAlarm,
-          ),
-        );
-      },
+    return Dismissible(
+      key: Key(alarm.id),
+      direction: DismissDirection.up,
+      onDismissed: (_) => viewModel.deleteAlarm(alarm.id),
+      background: Container(
+        color: theme.colorScheme.error,
+        alignment: Alignment.center,
+        child: const Icon(Icons.delete, color: Colors.white, size: 32),
+      ),
       child: Container(
-        width: blockSize,
-        height: blockSize,
         decoration: BoxDecoration(
-          color: Colors.transparent,
+          color: isDark ? const Color(0xFF1C1C1E) : const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-              color: themeProvider.isDarkMode
-                  ? Colors.white
-                  : theme.colorScheme.tertiary,
-              width: 0.5),
-          borderRadius: BorderRadius.circular(10),
+            color: isDark ? Colors.white10 : Colors.black12,
+            width: 1,
+          ),
         ),
-        child: Icon(
-          Icons.add,
-          color: themeProvider.isDarkMode
-              ? Colors.white
-              : theme.colorScheme.tertiary
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  alarm.label.isEmpty ? 'Alarm' : alarm.label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                // Delete Button
+                GestureDetector(
+                  onTap: () => viewModel.deleteAlarm(alarm.id),
+                  child: Icon(
+                    Icons.close, 
+                    size: 20, 
+                    color: theme.colorScheme.onSurface.withOpacity(0.4)
+                  ),
+                ),
+              ],
+            ),
+            
+            const Spacer(),
+            
+            Text(
+              timeString,
+              style: theme.textTheme.displayMedium?.copyWith(
+                fontSize: 40, // Adjusted for card size
+                color: alarm.isEnabled 
+                    ? theme.colorScheme.onSurface 
+                    : theme.colorScheme.onSurface.withOpacity(0.3),
+              ),
+            ),
+            
+            const SizedBox(height: 8),
+            
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDays(alarm.days),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                     color: theme.colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
+                Switch(
+                  value: alarm.isEnabled,
+                  onChanged: (value) => viewModel.toggleAlarm(alarm.id, value),
+                  activeColor: theme.colorScheme.primary,
+                  activeTrackColor: theme.colorScheme.primary.withOpacity(0.3),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  String _formatDays(List<bool> days) {
+    if (days.every((element) => element == false)) return 'Once';
+    if (days.every((element) => element == true)) return 'Daily';
+    
+    // Simple logic to show Mon, Tue etc.
+    const weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    List<String> activeDays = [];
+    for(int i=0; i<days.length; i++) {
+      if(days[i]) activeDays.add(weekDays[i]);
+    }
+    return activeDays.join(' ');
   }
 }
-
-/// Widget for a single alarm block, showing time, active days, and enable switch.
-class AlarmBlock extends StatelessWidget {
-  /// The alarm data to display
-  final Alarm alarm;
-  
-  /// Size of the alarm block
-  final double blockSize;
-  
-  /// Callback when the alarm is toggled
-  final VoidCallback onToggle;
-
-  const AlarmBlock({
-    super.key, 
-    required this.alarm, 
-    required this.blockSize,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final theme = Theme.of(context);
-
-    // Format HH:MM string, ensuring leading zeros.
-    final timeString = "${alarm.time.hour.toString().padLeft(2, '0')}:"
-        "${alarm.time.minute.toString().padLeft(2, '0')}";
-
-    // Compute display of selected days or 'EVERYDAY'.
-    const daysOrder = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-    final activeDays = daysOrder.where((d) => alarm.days[d] ?? false).toList();
-    final daysText = activeDays.isEmpty ? "EVERYDAY" : activeDays.join(", ");
-
-    return Container(
-      width: blockSize,
-      height: blockSize,
-      decoration: BoxDecoration(
-          color: theme.colorScheme.tertiary,
-          borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Stack(children: [
-          // Top-left: Time and day labels
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(timeString,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(color: Colors.white)),
-              const SizedBox(height: 10),
-              Text(daysText, style: TextStyle(color: theme.colorScheme.onTertiary)),
-            ],
-          ),
-          // Bottom switch to enable/disable alarm
-          Positioned(
-            top: blockSize - 80,
-            left: blockSize / 2 - 16,
-            child: SwitchButton(
-              defaultValue: alarm.isEnabled,
-              onChanged: onToggle,
-              inactiveThumbColor: themeProvider.isDarkMode
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.surface,
-              inactiveTrackColor: theme.colorScheme.tertiary,
-              activeTrackColor: theme.colorScheme.tertiary,
-              outlineColor: themeProvider.isDarkMode
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.surface,
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-} 
