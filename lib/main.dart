@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_display_mode/flutter_display_mode.dart'; // Import this
+import 'package:flutter_displaymode/flutter_displaymode.dart'; // Corrected import
 
 import 'theme/theme.dart';
 import 'screens/router.dart';
@@ -15,16 +15,15 @@ import 'providers/timer_provider.dart';
 import 'providers/worldclocks_provider.dart';
 import 'view_models/alarms_view_model.dart';
 import 'models/alarm.dart';
-// Import other necessary models if Hive requires adapters
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // 1. Initialize Hive
   await Hive.initFlutter();
-  // Register Adapters here if not already done (e.g., Hive.registerAdapter(AlarmAdapter()));
+  if (!Hive.isAdapterRegistered(0)) {
+    Hive.registerAdapter(AlarmAdapter());
+  }
   
-  // 2. Enable High Refresh Rate for Pixel 9 Pro XL
   if (Platform.isAndroid) {
     try {
       await FlutterDisplayMode.setHighRefreshRate();
@@ -33,7 +32,6 @@ void main() async {
     }
   }
 
-  // 3. Set System UI Overlay Style (Transparent status bar)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     systemNavigationBarColor: Colors.transparent,
@@ -47,7 +45,8 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ClockProvider()),
         ChangeNotifierProvider(create: (_) => StopwatchProvider()),
         ChangeNotifierProvider(create: (_) => TimerProvider()),
-        ChangeNotifierProvider(create: (_) => WorldClocksProvider()),
+        // Fixed: Removed context arg
+        ChangeNotifierProvider(create: (_) => WorldClocksProvider()), 
         ChangeNotifierProvider(create: (_) => AlarmsViewModel()),
       ],
       child: const NothingClockApp(),
@@ -69,7 +68,8 @@ class NothingClockApp extends StatelessWidget {
           darkTheme: NothingTheme.darkTheme,
           themeMode: themeProvider.themeMode,
           initialRoute: '/',
-          onGenerateRoute: AppRouter.generateRoute,
+          // Ensure AppRouter is correct in lib/screens/router.dart
+          onGenerateRoute: AppRouter.generateRoute, 
         );
       },
     );
