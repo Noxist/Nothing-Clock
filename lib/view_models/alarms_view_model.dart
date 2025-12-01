@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../models/alarm.dart';
 import '../services/alarms_service.dart';
 
@@ -12,10 +11,10 @@ class AlarmsViewModel extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   AlarmsViewModel() {
-    _loadAlarms();
+    loadAlarms();
   }
 
-  Future<void> _loadAlarms() async {
+  Future<void> loadAlarms() async {
     _isLoading = true;
     notifyListeners();
     _alarms = await _alarmsService.getAlarms();
@@ -25,38 +24,33 @@ class AlarmsViewModel extends ChangeNotifier {
 
   Future<void> addAlarm(Alarm alarm) async {
     await _alarmsService.saveAlarm(alarm);
+    await _alarmsService.scheduleAlarm(alarm);
     _alarms.add(alarm);
-    // Sort alarms by time
-    _alarms.sort((a, b) {
-      final aTime = a.time.hour * 60 + a.time.minute;
-      final bTime = b.time.hour * 60 + b.time.minute;
-      return aTime.compareTo(bTime);
-    });
+    _sortAlarms();
     notifyListeners();
   }
 
   Future<void> updateAlarm(Alarm alarm) async {
-    await _alarmsService.saveAlarm(alarm); // This handles update if ID exists
+    await _alarmsService.saveAlarm(alarm);
     final index = _alarms.indexWhere((a) => a.id == alarm.id);
     if (index != -1) {
       _alarms[index] = alarm;
+      _sortAlarms();
       notifyListeners();
     }
   }
 
-  Future<void> deleteAlarm(String id) async {
-    // 1. Cancel the notification/schedule
+  Future<void> deleteAlarm(int id) async {
+    // 1. Cancel
     await _alarmsService.cancelAlarm(id);
-    
-    // 2. Remove from local storage
-    await _alarmsService.deleteAlarm(id);
-    
-    // 3. Remove from local list and update UI
+    // 2. Delete from storage
+    await _alarmsService.deleteAlarm(id.toString());
+    // 3. Remove locally
     _alarms.removeWhere((alarm) => alarm.id == id);
     notifyListeners();
   }
 
-  Future<void> toggleAlarm(String id, bool value) async {
+  Future<void> toggleAlarm(int id, bool value) async {
     final index = _alarms.indexWhere((a) => a.id == id);
     if (index != -1) {
       final alarm = _alarms[index];
@@ -65,10 +59,18 @@ class AlarmsViewModel extends ChangeNotifier {
       if (value) {
         await _alarmsService.scheduleAlarm(updatedAlarm);
       } else {
-        await _alarmsService.cancelAlarm(updatedAlarm.id);
+        await _alarmsService.cancelAlarm(updatedAlarm);
       }
       
       await updateAlarm(updatedAlarm);
     }
+  }
+
+  void _sortAlarms() {
+    _alarms.sort((a, b) {
+      final aTime = a.time.hour * 60 + a.time.minute;
+      final bTime = b.time.hour * 60 + b.time.minute;
+      return aTime.compareTo(bTime);
+    });
   }
 }
