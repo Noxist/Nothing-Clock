@@ -7,8 +7,18 @@ class AlarmsViewModel extends ChangeNotifier {
   List<Alarm> _alarms = [];
   bool _isLoading = true;
 
+  // Mock sleep data to prevent UI errors
+  final DateTime _sleepTime = DateTime(2024, 1, 1, 23, 0);
+  final Map<String, bool> _sleepDays = {'M':true,'T':true,'W':true,'T ':true,'F':true,'S':false,'S ':false};
+  bool _isSleepEnabled = true;
+
   List<Alarm> get alarms => _alarms;
   bool get isLoading => _isLoading;
+  
+  // Sleep getters
+  DateTime get sleepTime => _sleepTime;
+  Map<String, bool> get sleepDays => _sleepDays;
+  bool get isSleepEnabled => _isSleepEnabled;
 
   AlarmsViewModel() {
     loadAlarms();
@@ -24,7 +34,9 @@ class AlarmsViewModel extends ChangeNotifier {
 
   Future<void> addAlarm(Alarm alarm) async {
     await _alarmsService.saveAlarm(alarm);
-    await _alarmsService.scheduleAlarm(alarm);
+    if (alarm.isEnabled) {
+      await _alarmsService.scheduleAlarm(alarm);
+    }
     _alarms.add(alarm);
     _sortAlarms();
     notifyListeners();
@@ -32,6 +44,13 @@ class AlarmsViewModel extends ChangeNotifier {
 
   Future<void> updateAlarm(Alarm alarm) async {
     await _alarmsService.saveAlarm(alarm);
+    // Reschedule if enabled, otherwise just save
+    if (alarm.isEnabled) {
+      await _alarmsService.scheduleAlarm(alarm);
+    } else {
+      await _alarmsService.cancelAlarm(alarm.id);
+    }
+
     final index = _alarms.indexWhere((a) => a.id == alarm.id);
     if (index != -1) {
       _alarms[index] = alarm;
@@ -41,14 +60,14 @@ class AlarmsViewModel extends ChangeNotifier {
   }
 
   Future<void> deleteAlarm(int id) async {
-    // 1. Cancel
     await _alarmsService.cancelAlarm(id);
-    // 2. Delete from storage
-    await _alarmsService.deleteAlarm(id.toString());
-    // 3. Remove locally
+    await _alarmsService.deleteAlarm(id);
     _alarms.removeWhere((alarm) => alarm.id == id);
     notifyListeners();
   }
+
+  // Alias for UI compatibility
+  Future<void> toggleAlarmState(int id, bool value) => toggleAlarm(id, value);
 
   Future<void> toggleAlarm(int id, bool value) async {
     final index = _alarms.indexWhere((a) => a.id == id);
@@ -59,11 +78,16 @@ class AlarmsViewModel extends ChangeNotifier {
       if (value) {
         await _alarmsService.scheduleAlarm(updatedAlarm);
       } else {
-        await _alarmsService.cancelAlarm(updatedAlarm);
+        await _alarmsService.cancelAlarm(id);
       }
       
       await updateAlarm(updatedAlarm);
     }
+  }
+
+  void toggleSleepEnabled(bool value) {
+    _isSleepEnabled = value;
+    notifyListeners();
   }
 
   void _sortAlarms() {
