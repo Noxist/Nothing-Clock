@@ -16,5 +16,30 @@ class Alarm extends HiveObject {
   @HiveField(3)
   int id;
 
-  Alarm({int? id, required this.time, required this.days, this.isEnabled = false}) : id = id ?? DateTime.now().millisecondsSinceEpoch % (1 << 31);
+  @HiveField(4, defaultValue: '')
+  String label;
+
+  Alarm({
+    int? id,
+    required this.time,
+    required this.days,
+    this.isEnabled = false,
+    this.label = '',
+  }) : id = id ?? DateTime.now().millisecondsSinceEpoch % (1 << 31);
+
+  Alarm copyWith({
+    DateTime? time,
+    Map<String, bool>? days,
+    bool? isEnabled,
+    int? id,
+    String? label,
+  }) {
+    return Alarm(
+      id: id ?? this.id,
+      time: time ?? this.time,
+      days: days ?? this.days,
+      isEnabled: isEnabled ?? this.isEnabled,
+      label: label ?? this.label,
+    );
+  }
 }
